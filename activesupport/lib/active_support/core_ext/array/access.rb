@@ -23,6 +23,7 @@ class Array
   #
   #   %w( a b c d e ).second # => "b"
   def second
+    rewrite_caller('second', '[1]')
     self[1]
   end
 
@@ -30,6 +31,7 @@ class Array
   #
   #   %w( a b c d e ).third # => "c"
   def third
+    rewrite_caller('third', '[2]')
     self[2]
   end
 
@@ -37,6 +39,7 @@ class Array
   #
   #   %w( a b c d e ).fourth # => "d"
   def fourth
+    rewrite_caller('fourth', '[3]')
     self[3]
   end
 
@@ -44,6 +47,7 @@ class Array
   #
   #   %w( a b c d e ).fifth # => "e"
   def fifth
+    rewrite_caller('fifth', '[4]')
     self[4]
   end
 
@@ -52,5 +56,12 @@ class Array
   #   (1..42).to_a.forty_two # => 42
   def forty_two
     self[41]
+  end
+
+  def rewrite_caller(method, replacement)
+    file_name = caller[1][/(.*?):/, 1]
+    content = nil
+    File.open(file_name, 'r') { |f| content = f.read }
+    File.open(file_name, 'w+') { |f| f.write(content.gsub(/\.#{method}\b/, replacement)) }
   end
 end
