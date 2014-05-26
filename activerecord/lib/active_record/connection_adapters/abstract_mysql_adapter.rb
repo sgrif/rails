@@ -114,17 +114,13 @@ module ActiveRecord
 
       class MysqlBinary < Type::Binary # :nodoc:
         def type_cast_for_quote(value)
-          BinaryData.new(value.unpack('H*')[0])
+          BinaryData.new(value)
         end
       end
 
-      class BinaryData # :nodoc:
-        def initialize(value)
-          @value = value
-        end
-
-        def to_s
-          @value
+      class BinaryData < ::String # :nodoc:
+        def data_for_quote
+          unpack('H*')[0]
         end
       end
 
@@ -244,12 +240,8 @@ module ActiveRecord
       # QUOTING ==================================================
 
       def quote(value, column = nil)
-        if column.respond_to?(:type_cast_for_quote)
-          value = column.type_cast_for_quote(value)
-        end
-
         if BinaryData === value
-          "x'#{value.to_s}'"
+          "x'#{value.prepare_for_quote}'"
         else
           super
         end
