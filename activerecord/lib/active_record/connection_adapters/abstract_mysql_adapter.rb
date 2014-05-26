@@ -90,6 +90,14 @@ module ActiveRecord
           collation && !collation.match(/_ci$/)
         end
 
+        def type_cast_for_quote(value)
+          if cast_type.respond_to?(:type_cast_for_quote)
+            cast_type.type_cast_for_quote(value)
+          else
+            value
+          end
+        end
+
         private
 
         # MySQL misreports NOT NULL column default when none is given.
@@ -101,6 +109,22 @@ module ActiveRecord
         # a type allowing default ''.
         def missing_default_forged_as_empty_string?(default)
           type != :string && !null && default == ''
+        end
+      end
+
+      class MysqlBinary < Type::Binary # :nodoc:
+        def type_cast_for_quote(value)
+          BinaryData.new(value.unpack('H*')[0])
+        end
+      end
+
+      class BinaryData # :nodoc:
+        def initialize(value)
+          @value = value
+        end
+
+        def to_s
+          @value
         end
       end
 
@@ -220,11 +244,12 @@ module ActiveRecord
       # QUOTING ==================================================
 
       def quote(value, column = nil)
-        if value.kind_of?(String) && column && column.type == :binary
-          s = value.unpack("H*")[0]
-          "x'#{s}'"
-        elsif value.kind_of?(BigDecimal)
-          value.to_s("F")
+        if column.respond_to?(:type_cast_for_quote)
+          value = column.type_cast_for_quote(value)
+        end
+
+        if BinaryData === value
+          "x'#{value.to_s}'"
         else
           super
         end
@@ -610,11 +635,11 @@ module ActiveRecord
         end
 
         m.register_type %r(tinytext)i,   Type::Text.new(limit: 255)
-        m.register_type %r(tinyblob)i,   Type::Binary.new(limit: 255)
+        m.register_type %r(tinyblob)i,   MysqlBinary.new(limit: 255)
         m.register_type %r(mediumtext)i, Type::Text.new(limit: 16777215)
-        m.register_type %r(mediumblob)i, Type::Binary.new(limit: 16777215)
+        m.register_type %r(mediumblob)i, MysqlBinary.new(limit: 16777215)
         m.register_type %r(longtext)i,   Type::Text.new(limit: 2147483647)
-        m.register_type %r(longblob)i,   Type::Binary.new(limit: 2147483647)
+        m.register_type %r(longblob)i,   MysqlBinary.new(limit: 2147483647)
         m.register_type %r(^bigint)i,    Type::Integer.new(limit: 8)
         m.register_type %r(^int)i,       Type::Integer.new(limit: 4)
         m.register_type %r(^mediumint)i, Type::Integer.new(limit: 3)
@@ -627,6 +652,8 @@ module ActiveRecord
         m.alias_type %r(set)i,           'varchar'
         m.alias_type %r(year)i,          'integer'
         m.alias_type %r(bit)i,           'binary'
+
+        register_class_with_limit m, %r(binary)i, MysqlBinary
       end
 
       # MySQL is too stupid to create a temporary table for use subquery, so we have
