@@ -1,3 +1,12 @@
+*   Query behavior does not change based based on whether or not prepared
+    statements are used. Under normal circumstances, single values will use
+    prepared statements, but arrays will not. This affects custom types, such as
+    using `serialize`.
+
+    Fixes #18582.
+
+    *Sean Griffin*
+
 *   Don't run SQL if attribute value is not changed for update_attribute method.
 
     *Prathamesh Sonpatki*

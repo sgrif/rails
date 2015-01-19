@@ -101,4 +101,10 @@ class SerializationTest < ActiveRecord::TestCase
 
     assert_equal 1, Author.joins(:serialized_posts).where(name: "David", serialized_posts: { title: "Hello" }).length
   end
+
+  def test_querying_by_serialized_column_with_array
+    SerializedPost.create!(title: "Hello")
+
+    assert_equal SerializedPost.where(title: "Hello"), SerializedPost.where(title: ["Hello"])
+  end
 end
