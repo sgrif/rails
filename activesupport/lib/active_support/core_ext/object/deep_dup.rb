@@ -1,3 +1,4 @@
+require 'active_support/core_ext/thread'
 require 'active_support/core_ext/object/duplicable'
 
 class Object
@@ -11,7 +12,49 @@ class Object
   #   object.instance_variable_defined?(:@a) # => false
   #   dup.instance_variable_defined?(:@a)    # => true
   def deep_dup
-    duplicable? ? dup : self
+    if duplicable?
+      ActiveSupport::DeepDuper.new(self).result
+    else
+      self
+    end
+  end
+end
+
+module ActiveSupport
+  class DeepDuper
+    def initialize(object)
+      @object = object
+    end
+
+    def result
+      Thread.recursion_guard(object, :dup.to_proc) do |clone|
+        copy_all_instance_variables(clone)
+      end
+    end
+
+    protected
+
+    attr_reader :object
+
+    private
+
+    def copy_all_instance_variables(clone)
+      object.instance_variables.each do |ivar|
+        copy_instance_variable(clone, ivar)
+      end
+    end
+
+    def copy_instance_variable(clone, ivar)
+      original_value = clone.instance_variable_get(ivar)
+      if instance_variable_unchanged?(ivar, original_value)
+        new_value = original_value.deep_dup
+        clone.instance_variable_set(ivar, new_value)
+      end
+    end
+
+    def instance_variable_unchanged?(ivar, value)
+      object.instance_variable_get(ivar).equal?(value)
+    end
   end
 end
 
