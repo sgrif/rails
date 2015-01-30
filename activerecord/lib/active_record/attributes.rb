@@ -9,8 +9,6 @@ module ActiveRecord
       class_attribute :user_provided_defaults, instance_accessor: false # :internal:
       self.user_provided_types = {}
       self.user_provided_defaults = {}
-
-      delegate :persistable_attribute_names, to: :class
     end
 
     module ClassMethods # :nodoc:
@@ -89,17 +87,7 @@ module ActiveRecord
       end
 
       def define_attribute(name, cast_type)
-        if columns_hash.key?(name)
-          new_column = columns_hash[name].with_type(cast_type)
-        else
-          new_column = connection.new_column(name, nil, cast_type)
-        end
-
-        @columns_hash = columns_hash.merge(name => new_column)
-      end
-
-      def persistable_attribute_names # :nodoc:
-        @persistable_attribute_names ||= connection.schema_cache.columns_hash(table_name).keys
+        attribute_types[name] = cast_type
       end
 
       def load_schema!
@@ -112,7 +100,11 @@ module ActiveRecord
       private
 
       def raw_default_values
-        super.merge(user_provided_defaults)
+        result = super.merge(user_provided_defaults)
+        (user_provided_types.keys - result.keys).each do |name|
+          result[name] = nil
+        end
+        result
       end
     end
   end

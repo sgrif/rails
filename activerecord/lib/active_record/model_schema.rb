@@ -226,13 +226,13 @@ module ActiveRecord
       end
 
       def columns
+        load_schema
         @columns ||= columns_hash.values
       end
 
       def attribute_types # :nodoc:
-        @attribute_types ||= columns_hash.transform_values(&:cast_type).tap do |h|
-          h.default = Type::Value.new
-        end
+        load_schema
+        @attribute_types ||= Hash.new(Type::Value.new)
       end
 
       def type_for_attribute(attr_name) # :nodoc:
@@ -309,14 +309,17 @@ module ActiveRecord
 
       def load_schema!
         @columns_hash = connection.schema_cache.columns_hash(table_name)
+        @columns_hash.each do |name, column|
+          define_attribute(name, column.cast_type)
+        end
       end
 
       def reload_schema_from_cache
-        @arel_engine        = nil
-        @arel_table         = nil
-        @column_names       = nil
-        @attribute_types       = nil
-        @content_columns    = nil
+        @arel_engine = nil
+        @arel_table = nil
+        @column_names = nil
+        @attribute_types = nil
+        @content_columns = nil
         @default_attributes = nil
         @inheritance_column = nil unless defined?(@explicit_inheritance_column) && @explicit_inheritance_column
         @attributes_builder = nil
@@ -326,7 +329,7 @@ module ActiveRecord
         @columns_hash = nil
         @content_columns = nil
         @default_attributes = nil
-        @persistable_attribute_names = nil
+        @attribute_names = nil
       end
 
       # Guesses the table name, but does not decorate it with prefix and suffix information.

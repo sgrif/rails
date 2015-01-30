@@ -26,8 +26,8 @@ module ActiveRecord
 
       def load_schema!
         super
-        columns_hash.each do |name, column|
-          decorated_type = attribute_type_decorations.apply(column.name, column.cast_type)
+        attribute_types.each do |name, type|
+          decorated_type = attribute_type_decorations.apply(name, type)
           define_attribute(name, decorated_type)
         end
       end
