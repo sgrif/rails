@@ -217,7 +217,7 @@ module ActiveRecord
       end
 
       def attributes_builder # :nodoc:
-        @attributes_builder ||= AttributeSet::Builder.new(column_types, primary_key)
+        @attributes_builder ||= AttributeSet::Builder.new(attribute_types, primary_key)
       end
 
       def columns_hash # :nodoc:
@@ -229,14 +229,14 @@ module ActiveRecord
         @columns ||= columns_hash.values
       end
 
-      def column_types # :nodoc:
-        @column_types ||= columns_hash.transform_values(&:cast_type).tap do |h|
+      def attribute_types # :nodoc:
+        @attribute_types ||= columns_hash.transform_values(&:cast_type).tap do |h|
           h.default = Type::Value.new
         end
       end
 
       def type_for_attribute(attr_name) # :nodoc:
-        column_types[attr_name]
+        attribute_types[attr_name]
       end
 
       # Returns a hash where the keys are column names and the values are
@@ -315,13 +315,13 @@ module ActiveRecord
         @arel_engine        = nil
         @arel_table         = nil
         @column_names       = nil
-        @column_types       = nil
+        @attribute_types       = nil
         @content_columns    = nil
         @default_attributes = nil
         @inheritance_column = nil unless defined?(@explicit_inheritance_column) && @explicit_inheritance_column
         @attributes_builder = nil
         @column_names = nil
-        @column_types = nil
+        @attribute_types = nil
         @columns = nil
         @columns_hash = nil
         @content_columns = nil
