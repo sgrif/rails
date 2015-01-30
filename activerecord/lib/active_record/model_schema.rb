@@ -220,9 +220,13 @@ module ActiveRecord
         @attributes_builder ||= AttributeSet::Builder.new(column_types, primary_key)
       end
 
-      def columns # :nodoc:
-        load_schema!
-        @columns
+      def columns_hash # :nodoc:
+        load_schema
+        @columns_hash
+      end
+
+      def columns
+        @columns ||= columns_hash.values
       end
 
       def column_types # :nodoc:
@@ -288,6 +292,26 @@ module ActiveRecord
         undefine_attribute_methods
         connection.schema_cache.clear_table_cache!(table_name) if table_exists?
 
+        reload_schema_from_cache
+      end
+
+      private
+
+      def schema_loaded?
+        defined?(@columns_hash) && @columns_hash
+      end
+
+      def load_schema
+        unless schema_loaded?
+          load_schema!
+        end
+      end
+
+      def load_schema!
+        @columns_hash = connection.schema_cache.columns_hash(table_name)
+      end
+
+      def reload_schema_from_cache
         @arel_engine        = nil
         @arel_table         = nil
         @column_names       = nil
@@ -295,14 +319,14 @@ module ActiveRecord
         @content_columns    = nil
         @default_attributes = nil
         @inheritance_column = nil unless defined?(@explicit_inheritance_column) && @explicit_inheritance_column
-      end
-
-      private
-
-      def load_schema!
-        unless defined?(@columns) && @columns
-          @columns = connection.schema_cache.columns(table_name)
-        end
+        @attributes_builder = nil
+        @column_names = nil
+        @column_types = nil
+        @columns = nil
+        @columns_hash = nil
+        @content_columns = nil
+        @default_attributes = nil
+        @persistable_attribute_names = nil
       end
 
       # Guesses the table name, but does not decorate it with prefix and suffix information.
