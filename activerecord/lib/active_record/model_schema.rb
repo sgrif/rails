@@ -220,6 +220,11 @@ module ActiveRecord
         @attributes_builder ||= AttributeSet::Builder.new(column_types, primary_key)
       end
 
+      def columns # :nodoc:
+        load_schema!
+        @columns
+      end
+
       def column_types # :nodoc:
         @column_types ||= columns_hash.transform_values(&:cast_type).tap do |h|
           h.default = Type::Value.new
@@ -293,6 +298,12 @@ module ActiveRecord
       end
 
       private
+
+      def load_schema!
+        unless defined?(@columns) && @columns
+          @columns = connection.schema_cache.columns(table_name)
+        end
+      end
 
       # Guesses the table name, but does not decorate it with prefix and suffix information.
       def undecorated_table_name(class_name = base_class.name)
