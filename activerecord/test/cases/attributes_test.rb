@@ -105,5 +105,24 @@ module ActiveRecord
       assert_equal 7, klass.column_defaults.length
       assert klass.attribute_types.include?('wibble')
     end
+
+    test "the given default value is cast from user" do
+      custom_type = Class.new(Type::Value) do
+        def type_cast_from_user(*)
+          "from user"
+        end
+
+        def type_cast_from_database(*)
+          "from database"
+        end
+      end
+
+      klass = Class.new(OverloadedType) do
+        attribute :wibble, custom_type.new
+      end
+      model = klass.new
+
+      assert_equal "from user", model.wibble
+    end
   end
 end
