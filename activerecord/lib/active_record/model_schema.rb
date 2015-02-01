@@ -242,12 +242,12 @@ module ActiveRecord
       # Returns a hash where the keys are column names and the values are
       # default values when instantiating the AR object for this table.
       def column_defaults
+        load_schema
         _default_attributes.to_hash
       end
 
       def _default_attributes # :nodoc:
-        @default_attributes ||= attributes_builder.build_from_database(
-          raw_default_values)
+        @default_attributes ||= AttributeSet.new({})
       end
 
       # Returns an array of column names as strings.
@@ -290,7 +290,7 @@ module ActiveRecord
       def reset_column_information
         connection.clear_cache!
         undefine_attribute_methods
-        connection.schema_cache.clear_table_cache!(table_name) if table_exists?
+        connection.schema_cache.clear_table_cache!(table_name)
 
         reload_schema_from_cache
       end
@@ -310,7 +310,12 @@ module ActiveRecord
       def load_schema!
         @columns_hash = connection.schema_cache.columns_hash(table_name)
         @columns_hash.each do |name, column|
-          define_attribute(name, column.cast_type)
+          define_attribute(
+            name,
+            column.cast_type,
+            default: column.default,
+            user_provided_default: false
+          )
         end
       end
 
@@ -354,10 +359,6 @@ module ActiveRecord
           # STI subclasses always use their superclass' table.
           base.table_name
         end
-      end
-
-      def raw_default_values
-        columns_hash.transform_values(&:default)
       end
     end
   end

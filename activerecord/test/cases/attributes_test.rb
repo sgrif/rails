@@ -118,7 +118,7 @@ module ActiveRecord
       end
 
       klass = Class.new(OverloadedType) do
-        attribute :wibble, custom_type.new
+        attribute :wibble, custom_type.new, default: "default"
       end
       model = klass.new
 

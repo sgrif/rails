@@ -6,9 +6,7 @@ module ActiveRecord
 
     included do
       class_attribute :user_provided_types, instance_accessor: false # :internal:
-      class_attribute :user_provided_defaults, instance_accessor: false # :internal:
       self.user_provided_types = {}
-      self.user_provided_defaults = {}
     end
 
     module ClassMethods # :nodoc:
@@ -75,36 +73,44 @@ module ActiveRecord
       #
       #   store_listing = StoreListing.new(price_in_cents: '$10.00')
       #   store_listing.price_in_cents # => 1000
-      def attribute(name, cast_type, options = {})
+      def attribute(name, cast_type, **options)
         name = name.to_s
         reload_schema_from_cache
 
-        self.user_provided_types = user_provided_types.merge(name => cast_type)
-
-        if options.key?(:default)
-          self.user_provided_defaults = user_provided_defaults.merge(name => options[:default])
-        end
+        self.user_provided_types = user_provided_types.merge(name => [cast_type, options])
       end
 
-      def define_attribute(name, cast_type)
+      def define_attribute(
+        name,
+        cast_type,
+        default: NO_DEFAULT_PROVIDED,
+        user_provided_default: true
+      )
         attribute_types[name] = cast_type
+        define_default_attribute(name, default, cast_type, from_user: user_provided_default)
       end
 
       def load_schema!
         super
-        user_provided_types.each do |name, type|
-          define_attribute(name, type)
+        user_provided_types.each do |name, (type, options)|
+          define_attribute(name, type, **options)
         end
       end
 
       private
 
-      def raw_default_values
-        result = super.merge(user_provided_defaults)
-        (user_provided_types.keys - result.keys).each do |name|
-          result[name] = nil
+      NO_DEFAULT_PROVIDED = Object.new # :nodoc:
+      private_constant :NO_DEFAULT_PROVIDED
+
+      def define_default_attribute(name, value, type, from_user:)
+        if value == NO_DEFAULT_PROVIDED
+          default_attribute = _default_attributes[name].with_type(type)
+        elsif from_user
+          default_attribute = Attribute.from_user(name, value, type)
+        else
+          default_attribute = Attribute.from_database(name, value, type)
         end
-        result
+        _default_attributes[name] = default_attribute
       end
     end
   end
