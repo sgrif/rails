@@ -14,15 +14,58 @@ module ActiveModel
       end
 
       private
+
       def setup!(klass)
-        attr_readers = attributes.reject { |name| klass.attribute_method?(name) }
-        attr_writers = attributes.reject { |name| klass.attribute_method?("#{name}=") }
-        klass.send(:attr_reader, *attr_readers)
-        klass.send(:attr_writer, *attr_writers)
+        klass.include(LazilyDefineAttributes.new(AttributeDefinition.new(attributes)))
       end
 
       def acceptable_option?(value)
         Array(options[:accept]).include?(value)
+      end
+
+      class LazilyDefineAttributes < Module
+        def initialize(attribute_definition)
+          define_method(:method_missing) do |method_name, *args, &block|
+            if attribute_defintion.matches?(method_name)
+              attribute_defintion.define_on(self.class)
+              send(method_name, *args, &block)
+            else
+              super(method_name, *args, &block)
+            end
+          end
+        end
+      end
+
+      class AttributeDefinition
+        def initialize(attributes)
+          @attributes = attributes.map(&:to_s)
+        end
+
+        def matches?(method_name)
+          attr_name = convert_to_reader_name(method_name)
+          attributes.include?(attr_name)
+        end
+
+        def define_on(klass)
+          attr_readers = attributes.reject { |name| klass.attribute_method?(name) }
+          attr_writers = attributes.reject { |name| klass.attribute_method?("#{name}=") }
+          klass.send(:attr_reader, *attr_readers)
+          klass.send(:attr_writer, *attr_writers)
+        end
+
+        protected
+
+        attr_reader :attributes
+
+        private
+
+        def convert_to_reader_name(method_name)
+          attr_name = attr_name.to_s
+          if attr_name.end_with?("=")
+            attr_name = attr_name[0..-2]
+          end
+          attr_name
+        end
       end
     end
 
