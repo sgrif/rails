@@ -87,7 +87,36 @@ module ActiveRecord
     # also be used to "borrow" the connection to do database work unrelated
     # to any of the specific Active Records.
     def connection
-      retrieve_connection
+      connection_mutex.synchronize do
+        @connection ||= nil
+        @connection || retrieve_connection
+      end
+    end
+
+    def using_connection(connection) # :nodoc:
+      connection_mutex.synchronize do
+        begin
+          @connection ||= nil
+          previous, @connection = @connection, connection
+          yield self
+        ensure
+          @connection = previous
+        end
+      end
+    end
+
+    def connection_mutex # :nodoc:
+      @connection_mutex ||= NestableMutex.new
+    end
+
+    class NestableMutex < Mutex # :nodoc:
+      def synchronize
+        if owned?
+          yield
+        else
+          super
+        end
+      end
     end
 
     attr_writer :connection_specification_name

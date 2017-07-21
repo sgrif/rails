@@ -42,6 +42,19 @@ module ActiveRecord
       end
     end
 
+    def test_default_connection
+      relation = Relation.new(FakeKlass, :b, nil)
+      assert_equal FakeKlass.connection, relation.connection
+    end
+
+    def test_injected_connection
+      connection = FakeKlass.connection.dup
+      relation = Relation.new(FakeKlass, :b, nil, {}, connection)
+
+      assert_not_equal FakeKlass.connection, relation.connection
+      assert_equal connection, relation.connection
+    end
+
     def test_extensions
       relation = Relation.new(FakeKlass, :b, nil)
       assert_equal [], relation.extensions

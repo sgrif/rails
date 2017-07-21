@@ -17,15 +17,16 @@ module ActiveRecord
     include Enumerable
     include FinderMethods, Calculations, SpawnMethods, QueryMethods, Batches, Explain, Delegation
 
-    attr_reader :table, :klass, :loaded, :predicate_builder
+    attr_reader :table, :klass, :loaded, :predicate_builder, :connection
     alias :model :klass
     alias :loaded? :loaded
     alias :locked? :lock_value
 
-    def initialize(klass, table, predicate_builder, values = {})
+    def initialize(klass, table, predicate_builder, values = {}, connection = nil)
       @klass  = klass
       @table  = table
       @values = values
+      @connection = connection || klass.connection
       @offsets = {}
       @loaded = false
       @predicate_builder = predicate_builder
@@ -44,9 +45,9 @@ module ActiveRecord
           k.name == primary_key
         }]
 
-        if !primary_key_value && klass.prefetch_primary_key?
-          primary_key_value = klass.next_sequence_value
-          values[arel_attribute(klass.primary_key)] = primary_key_value
+        if !primary_key_value && prefetch_primary_key?
+          primary_key_value = next_sequence_value
+          values[arel_attribute(primary_key)] = primary_key_value
         end
       end
 
@@ -61,7 +62,7 @@ module ActiveRecord
         im.insert substitutes
       end
 
-      @klass.connection.insert(
+      connection.insert(
         im,
         "SQL",
         primary_key || false,
@@ -73,18 +74,18 @@ module ActiveRecord
     def _update_record(values, id, id_was) # :nodoc:
       substitutes = substitute_values values
 
-      scope = @klass.unscoped
+      scope = unscoped
 
       if @klass.finder_needs_type_condition?
         scope.unscope!(where: @klass.inheritance_column)
       end
 
-      relation = scope.where(@klass.primary_key => (id_was || id))
+      relation = scope.where(primary_key => (id_was || id))
       um = relation
         .arel
-        .compile_update(substitutes, @klass.primary_key)
+        .compile_update(substitutes, primary_key)
 
-      @klass.connection.update(
+      connection.update(
         um,
         "SQL",
       )
@@ -92,7 +93,7 @@ module ActiveRecord
 
     def substitute_values(values) # :nodoc:
       values.map do |arel_attr, value|
-        bind = QueryAttribute.new(arel_attr.name, value, klass.type_for_attribute(arel_attr.name))
+        bind = QueryAttribute.new(arel_attr.name, value, type_for_attribute(arel_attr.name))
         [arel_attr, Arel::Nodes::BindParam.new(bind)]
       end
     end
@@ -315,7 +316,7 @@ module ActiveRecord
     # overriding ActiveRecord::Base#collection_cache_key.
     def cache_key(timestamp_column = :updated_at)
       @cache_keys ||= {}
-      @cache_keys[timestamp_column] ||= @klass.collection_cache_key(self, timestamp_column)
+      @cache_keys[timestamp_column] ||= collection_cache_key(timestamp_column)
     end
 
     # Scope all queries to the current scope.
@@ -361,11 +362,11 @@ module ActiveRecord
 
       stmt = Arel::UpdateManager.new
 
-      stmt.set Arel.sql(@klass.send(:sanitize_sql_for_assignment, updates))
+      stmt.set Arel.sql(sanitize_sql_for_assignment(updates))
       stmt.table(table)
 
       if has_join_values?
-        @klass.connection.join_to_update(stmt, arel, arel_attribute(primary_key))
+        connection.join_to_update(stmt, arel, arel_attribute(primary_key))
       else
         stmt.key = arel_attribute(primary_key)
         stmt.take(arel.limit)
@@ -373,7 +374,7 @@ module ActiveRecord
         stmt.wheres = arel.constraints
       end
 
-      @klass.connection.update stmt, "SQL"
+      connection.update stmt, "SQL"
     end
 
     # Updates an object (or multiple objects) and saves it to the database, if validations pass.
@@ -498,12 +499,12 @@ module ActiveRecord
       stmt.from(table)
 
       if has_join_values?
-        @klass.connection.join_to_delete(stmt, arel, arel_attribute(primary_key))
+        connection.join_to_delete(stmt, arel, arel_attribute(primary_key))
       else
         stmt.wheres = arel.constraints
       end
 
-      affected = @klass.connection.delete(stmt, "SQL")
+      affected = connection.delete(stmt, "SQL")
 
       reset
       affected
@@ -569,9 +570,8 @@ module ActiveRecord
                       find_with_associations { |rel| relation = rel }
                     end
 
-                    conn = klass.connection
-                    conn.unprepared_statement {
-                      sql, _ = conn.to_sql(relation.arel)
+                    connection.unprepared_statement {
+                      sql, _ = connection.to_sql(relation.arel)
                       sql
                     }
                   end
@@ -639,7 +639,7 @@ module ActiveRecord
     end
 
     def empty_scope? # :nodoc:
-      @values == klass.unscoped.values
+      @values == unscoped.values
     end
 
     def has_limit_or_offset? # :nodoc:
@@ -661,7 +661,7 @@ module ActiveRecord
 
       def exec_queries(&block)
         skip_query_cache_if_necessary do
-          @records = eager_loading? ? find_with_associations.freeze : @klass.find_by_sql(arel, &block).freeze
+          @records = eager_loading? ? find_with_associations.freeze : find_by_sql(arel, &block).freeze
 
           preload = preload_values
           preload += includes_values unless eager_loading?
@@ -714,6 +714,46 @@ module ActiveRecord
         # always convert table names to downcase as in Oracle quoted table names are in uppercase
         # ignore raw_sql_ that is used by Oracle adapter as alias for limit/offset subqueries
         string.scan(/([a-zA-Z_][.\w]+).?\./).flatten.map(&:downcase).uniq - ["raw_sql_"]
+      end
+
+      def prefetch_primary_key?
+        klass.using_connection(connection, &:prefetch_primary_key?)
+      end
+
+      def next_sequence_value
+        klass.using_connection(connection, &:next_sequence_value)
+      end
+
+      def primary_key
+        klass.using_connection(connection, &:primary_key)
+      end
+
+      def type_for_attribute(attr_name)
+        klass.using_connection(connection) do |klass|
+          klass.type_for_attribute(attr_name)
+        end
+      end
+
+      def unscoped
+        klass.using_connection(connection, &:unscoped)
+      end
+
+      def collection_cache_key(timestamp_column)
+        klass.using_connection(connection) do |klass|
+          klass.collection_cache_key(self, timestamp_column)
+        end
+      end
+
+      def sanitize_sql_for_assignment(updates)
+        klass.using_connection(connection) do |klass|
+          klass.send(:sanitize_sql_for_assignment, updates)
+        end
+      end
+
+      def find_by_sql(arel, &block)
+        klass.using_connection(connection) do |klass|
+          klass.find_by_sql(arel, &block)
+        end
       end
   end
 end
