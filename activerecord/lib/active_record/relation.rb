@@ -17,16 +17,16 @@ module ActiveRecord
     include Enumerable
     include FinderMethods, Calculations, SpawnMethods, QueryMethods, Batches, Explain, Delegation
 
-    attr_reader :table, :klass, :loaded, :predicate_builder, :connection
+    attr_reader :table, :klass, :loaded, :predicate_builder
     alias :model :klass
     alias :loaded? :loaded
     alias :locked? :lock_value
 
-    def initialize(klass, table, predicate_builder, values = {}, connection = nil)
+    def initialize(klass, table, predicate_builder, values = {}, connection_name = nil)
       @klass  = klass
       @table  = table
       @values = values
-      @connection = connection || klass.connection
+      @connection_name = connection_name
       @offsets = {}
       @loaded = false
       @predicate_builder = predicate_builder
@@ -35,6 +35,14 @@ module ActiveRecord
     def initialize_copy(other)
       @values = @values.dup
       reset
+    end
+
+    def connection
+      if @connection_name
+        klass.retrieve_connection(@connection_name)
+      else
+        klass.connection
+      end
     end
 
     def insert(values) # :nodoc:
@@ -717,41 +725,41 @@ module ActiveRecord
       end
 
       def prefetch_primary_key?
-        klass.using_connection(connection, &:prefetch_primary_key?)
+        klass.using_connection(@connection_name, &:prefetch_primary_key?)
       end
 
       def next_sequence_value
-        klass.using_connection(connection, &:next_sequence_value)
+        klass.using_connection(@connection_name, &:next_sequence_value)
       end
 
       def primary_key
-        klass.using_connection(connection, &:primary_key)
+        klass.using_connection(@connection_name, &:primary_key)
       end
 
       def type_for_attribute(attr_name)
-        klass.using_connection(connection) do |klass|
+        klass.using_connection(@connection_name) do |klass|
           klass.type_for_attribute(attr_name)
         end
       end
 
       def unscoped
-        klass.using_connection(connection, &:unscoped)
+        klass.using_connection(@connection_name, &:unscoped)
       end
 
       def collection_cache_key(timestamp_column)
-        klass.using_connection(connection) do |klass|
+        klass.using_connection(@connection_name) do |klass|
           klass.collection_cache_key(self, timestamp_column)
         end
       end
 
       def sanitize_sql_for_assignment(updates)
-        klass.using_connection(connection) do |klass|
+        klass.using_connection(@connection_name) do |klass|
           klass.send(:sanitize_sql_for_assignment, updates)
         end
       end
 
       def find_by_sql(arel, &block)
-        klass.using_connection(connection) do |klass|
+        klass.using_connection(@connection_name) do |klass|
           klass.find_by_sql(arel, &block)
         end
       end

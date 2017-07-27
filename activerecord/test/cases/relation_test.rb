@@ -43,16 +43,15 @@ module ActiveRecord
     end
 
     def test_default_connection
-      relation = Relation.new(FakeKlass, :b, nil)
-      assert_equal FakeKlass.connection, relation.connection
+      relation = Relation.new(Post, :b, nil)
+      assert_equal Post.connection, relation.connection
     end
 
     def test_injected_connection
-      connection = FakeKlass.connection.dup
-      relation = Relation.new(FakeKlass, :b, nil, {}, connection)
+      relation = Relation.new(Post, :b, nil, {}, "ARUnit2Model")
 
-      assert_not_equal FakeKlass.connection, relation.connection
-      assert_equal connection, relation.connection
+      assert_not_equal Post.connection, relation.connection
+      assert_equal Post.retrieve_connection("ARUnit2Model"), relation.connection
     end
 
     def test_extensions

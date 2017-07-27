@@ -87,36 +87,26 @@ module ActiveRecord
     # also be used to "borrow" the connection to do database work unrelated
     # to any of the specific Active Records.
     def connection
-      connection_mutex.synchronize do
-        @connection ||= nil
-        @connection || retrieve_connection
+      connection_monitor.synchronize do
+        @temp_conn_spec_name ||= nil
+        retrieve_connection(@temp_conn_spec_name)
       end
     end
 
-    def using_connection(connection) # :nodoc:
-      connection_mutex.synchronize do
+    def using_connection(spec_name) # :nodoc:
+      connection_monitor.synchronize do
         begin
-          @connection ||= nil
-          previous, @connection = @connection, connection
+          @temp_conn_spec_name ||= nil
+          previous, @temp_conn_spec_name = @temp_conn_spec_name, spec_name
           yield self
         ensure
-          @connection = previous
+          @temp_conn_spec_name = previous
         end
       end
     end
 
-    def connection_mutex # :nodoc:
-      @connection_mutex ||= NestableMutex.new
-    end
-
-    class NestableMutex < Mutex # :nodoc:
-      def synchronize
-        if owned?
-          yield
-        else
-          super
-        end
-      end
+    def connection_monitor # :nodoc:
+      @connection_monitor ||= Monitor.new
     end
 
     attr_writer :connection_specification_name
@@ -143,8 +133,8 @@ module ActiveRecord
       connection_handler.retrieve_connection_pool(connection_specification_name) || raise(ConnectionNotEstablished)
     end
 
-    def retrieve_connection
-      connection_handler.retrieve_connection(connection_specification_name)
+    def retrieve_connection(spec_name = nil)
+      connection_handler.retrieve_connection(spec_name || connection_specification_name)
     end
 
     # Returns +true+ if Active Record is connected.

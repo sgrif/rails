@@ -68,22 +68,20 @@ module ActiveRecord
 
       def test_using_connection
         klass2 = Class.new(Base) { def self.name; "klass2"; end }
-        dummy_connection = Object.new
 
-        assert_equal dummy_connection, klass2.using_connection(dummy_connection, &:connection)
+        assert_equal ActiveRecord::Base.retrieve_connection("ARUnit2Model"), klass2.using_connection("ARUnit2Model", &:connection)
         assert_equal ActiveRecord::Base.connection, klass2.connection
       end
 
       def test_using_connection_thread_safety
         klass2 = Class.new(Base) { def self.name; "klass2"; end }
-        dummy_connection = Object.new
         outer_connection = nil
 
         barrier_1 = Concurrent::CyclicBarrier.new(2)
         barrier_2 = Concurrent::CyclicBarrier.new(2)
         [
           Thread.new do
-            klass2.using_connection(dummy_connection) do |klass|
+            klass2.using_connection("ARUnit2Model") do |klass|
               barrier_1.wait
               barrier_2.wait(0.1)
             end
