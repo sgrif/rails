@@ -22,27 +22,19 @@ module ActiveRecord
     alias :loaded? :loaded
     alias :locked? :lock_value
 
-    def initialize(klass, table, predicate_builder, values = {}, connection_name = nil)
+    def initialize(klass, table, predicate_builder, values = {}, connection = klass.connection)
       @klass  = klass
       @table  = table
       @values = values
-      @connection_name = connection_name
       @offsets = {}
       @loaded = false
       @predicate_builder = predicate_builder
+      @connection = connection
     end
 
     def initialize_copy(other)
       @values = @values.dup
       reset
-    end
-
-    def connection
-      if @connection_name
-        klass.retrieve_connection(@connection_name)
-      else
-        klass.connection
-      end
     end
 
     def insert(values) # :nodoc:
@@ -654,7 +646,29 @@ module ActiveRecord
       limit_value || offset_value
     end
 
+    def marshal_dump
+      unless connection.equal?(klass.connection)
+        raise "Cannot marshal Relation with non-default connection"
+      end
+      instance_variables = self.instance_variables - [:@connection]
+      ivars = instance_variables.map do |name|
+        [name, instance_variable_get(name)]
+      end
+      [extending_values] + ivars
+    end
+
+    def marshal_load(values)
+      extending_values, *values = values
+      values.each do |name, value|
+        instance_variable_set(name, value)
+      end
+      self.connection = klass.connection
+      extend(*extending_values) if extending_values.any?
+    end
+
     protected
+
+      attr_accessor :connection
 
       def load_records(records)
         @records = records.freeze
@@ -725,41 +739,41 @@ module ActiveRecord
       end
 
       def prefetch_primary_key?
-        klass.using_connection(@connection_name, &:prefetch_primary_key?)
+        klass.using_connection(connection, &:prefetch_primary_key?)
       end
 
       def next_sequence_value
-        klass.using_connection(@connection_name, &:next_sequence_value)
+        klass.using_connection(connection, &:next_sequence_value)
       end
 
       def primary_key
-        klass.using_connection(@connection_name, &:primary_key)
+        klass.using_connection(connection, &:primary_key)
       end
 
       def type_for_attribute(attr_name)
-        klass.using_connection(@connection_name) do |klass|
+        klass.using_connection(connection) do |klass|
           klass.type_for_attribute(attr_name)
         end
       end
 
       def unscoped
-        klass.using_connection(@connection_name, &:unscoped)
+        klass.using_connection(connection, &:unscoped)
       end
 
       def collection_cache_key(timestamp_column)
-        klass.using_connection(@connection_name) do |klass|
+        klass.using_connection(connection) do |klass|
           klass.collection_cache_key(self, timestamp_column)
         end
       end
 
       def sanitize_sql_for_assignment(updates)
-        klass.using_connection(@connection_name) do |klass|
+        klass.using_connection(connection) do |klass|
           klass.send(:sanitize_sql_for_assignment, updates)
         end
       end
 
       def find_by_sql(arel, &block)
-        klass.using_connection(@connection_name) do |klass|
+        klass.using_connection(connection) do |klass|
           klass.find_by_sql(arel, &block)
         end
       end

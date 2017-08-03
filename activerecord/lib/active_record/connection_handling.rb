@@ -87,20 +87,17 @@ module ActiveRecord
     # also be used to "borrow" the connection to do database work unrelated
     # to any of the specific Active Records.
     def connection
-      connection_monitor.synchronize do
-        @temp_conn_spec_name ||= nil
-        retrieve_connection(@temp_conn_spec_name)
-      end
+      @connection || retrieve_connection
     end
 
-    def using_connection(spec_name) # :nodoc:
+    def using_connection(connection) # :nodoc:
       connection_monitor.synchronize do
         begin
-          @temp_conn_spec_name ||= nil
-          previous, @temp_conn_spec_name = @temp_conn_spec_name, spec_name
+          @connection ||= nil
+          previous_conn, @connection = @connection, connection
           yield self
         ensure
-          @temp_conn_spec_name = previous
+          @connection = previous_conn
         end
       end
     end
@@ -133,8 +130,8 @@ module ActiveRecord
       connection_handler.retrieve_connection_pool(connection_specification_name) || raise(ConnectionNotEstablished)
     end
 
-    def retrieve_connection(spec_name = nil)
-      connection_handler.retrieve_connection(spec_name || connection_specification_name)
+    def retrieve_connection
+      connection_handler.retrieve_connection(connection_specification_name)
     end
 
     # Returns +true+ if Active Record is connected.
