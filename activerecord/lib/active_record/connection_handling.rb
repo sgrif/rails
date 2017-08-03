@@ -87,23 +87,7 @@ module ActiveRecord
     # also be used to "borrow" the connection to do database work unrelated
     # to any of the specific Active Records.
     def connection
-      @connection || retrieve_connection
-    end
-
-    def using_connection(connection) # :nodoc:
-      connection_monitor.synchronize do
-        begin
-          @connection ||= nil
-          previous_conn, @connection = @connection, connection
-          yield self
-        ensure
-          @connection = previous_conn
-        end
-      end
-    end
-
-    def connection_monitor # :nodoc:
-      @connection_monitor ||= Monitor.new
+      retrieve_connection
     end
 
     attr_writer :connection_specification_name

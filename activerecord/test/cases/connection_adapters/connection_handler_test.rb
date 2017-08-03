@@ -66,35 +66,6 @@ module ActiveRecord
         ENV["RAILS_ENV"] = previous_env
       end
 
-      def test_using_connection
-        klass2 = Class.new(Base) { def self.name; "klass2"; end }
-
-        assert_equal ActiveRecord::Base.retrieve_connection("ARUnit2Model"), klass2.using_connection("ARUnit2Model", &:connection)
-        assert_equal ActiveRecord::Base.connection, klass2.connection
-      end
-
-      def test_using_connection_thread_safety
-        klass2 = Class.new(Base) { def self.name; "klass2"; end }
-        outer_connection = nil
-
-        barrier_1 = Concurrent::CyclicBarrier.new(2)
-        barrier_2 = Concurrent::CyclicBarrier.new(2)
-        [
-          Thread.new do
-            klass2.using_connection("ARUnit2Model") do |klass|
-              barrier_1.wait
-              barrier_2.wait(0.1)
-            end
-          end,
-          Thread.new do
-            barrier_1.wait
-            outer_connection = klass2.connection
-            barrier_2.wait
-          end
-        ].each(&:join)
-        assert_equal ActiveRecord::Base.connection, outer_connection
-      end
-
       def test_establish_connection_using_two_level_configurations
         config = { "development" => { "adapter" => "sqlite3", "database" => "db/primary.sqlite3" } }
         @prev_configs, ActiveRecord::Base.configurations = ActiveRecord::Base.configurations, config

@@ -17,7 +17,7 @@ module ActiveRecord
     include Enumerable
     include FinderMethods, Calculations, SpawnMethods, QueryMethods, Batches, Explain, Delegation
 
-    attr_reader :table, :klass, :loaded, :predicate_builder
+    attr_reader :table, :klass, :loaded, :predicate_builder, :connection
     alias :model :klass
     alias :loaded? :loaded
     alias :locked? :lock_value
@@ -45,8 +45,8 @@ module ActiveRecord
           k.name == primary_key
         }]
 
-        if !primary_key_value && prefetch_primary_key?
-          primary_key_value = next_sequence_value
+        if !primary_key_value && klass.prefetch_primary_key?(connection)
+          primary_key_value = klass.next_sequence_value(connection)
           values[arel_attribute(primary_key)] = primary_key_value
         end
       end
@@ -93,7 +93,7 @@ module ActiveRecord
 
     def substitute_values(values) # :nodoc:
       values.map do |arel_attr, value|
-        bind = QueryAttribute.new(arel_attr.name, value, type_for_attribute(arel_attr.name))
+        bind = QueryAttribute.new(arel_attr.name, value, klass.type_for_attribute(arel_attr.name))
         [arel_attr, Arel::Nodes::BindParam.new(bind)]
       end
     end
@@ -316,7 +316,7 @@ module ActiveRecord
     # overriding ActiveRecord::Base#collection_cache_key.
     def cache_key(timestamp_column = :updated_at)
       @cache_keys ||= {}
-      @cache_keys[timestamp_column] ||= collection_cache_key(timestamp_column)
+      @cache_keys[timestamp_column] ||= @klass.collection_cache_key(self, timestamp_column)
     end
 
     # Scope all queries to the current scope.
@@ -362,7 +362,7 @@ module ActiveRecord
 
       stmt = Arel::UpdateManager.new
 
-      stmt.set Arel.sql(sanitize_sql_for_assignment(updates))
+      stmt.set Arel.sql(@klass.send(:sanitize_sql_for_assignment, updates))
       stmt.table(table)
 
       if has_join_values?
@@ -668,7 +668,7 @@ module ActiveRecord
 
     protected
 
-      attr_accessor :connection
+      attr_writer :connection
 
       def load_records(records)
         @records = records.freeze
@@ -683,7 +683,11 @@ module ActiveRecord
 
       def exec_queries(&block)
         skip_query_cache_if_necessary do
-          @records = eager_loading? ? find_with_associations.freeze : find_by_sql(arel, &block).freeze
+          if eager_loading?
+            @records = find_with_associations.freeze
+          else
+            @records = klass.find_by_sql(arel, connection: connection, &block).freeze
+          end
 
           preload = preload_values
           preload += includes_values unless eager_loading?
@@ -738,43 +742,9 @@ module ActiveRecord
         string.scan(/([a-zA-Z_][.\w]+).?\./).flatten.map(&:downcase).uniq - ["raw_sql_"]
       end
 
-      def prefetch_primary_key?
-        klass.using_connection(connection, &:prefetch_primary_key?)
-      end
-
-      def next_sequence_value
-        klass.using_connection(connection, &:next_sequence_value)
-      end
-
-      def primary_key
-        klass.using_connection(connection, &:primary_key)
-      end
-
-      def type_for_attribute(attr_name)
-        klass.using_connection(connection) do |klass|
-          klass.type_for_attribute(attr_name)
-        end
-      end
-
       def unscoped
-        klass.using_connection(connection, &:unscoped)
-      end
-
-      def collection_cache_key(timestamp_column)
-        klass.using_connection(connection) do |klass|
-          klass.collection_cache_key(self, timestamp_column)
-        end
-      end
-
-      def sanitize_sql_for_assignment(updates)
-        klass.using_connection(connection) do |klass|
-          klass.send(:sanitize_sql_for_assignment, updates)
-        end
-      end
-
-      def find_by_sql(arel, &block)
-        klass.using_connection(connection) do |klass|
-          klass.find_by_sql(arel, &block)
+        klass.unscoped.tap do |relation|
+          relation.connection = self.connection
         end
       end
   end
